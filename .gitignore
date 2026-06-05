@@ -19,7 +19,6 @@ node_modules/
 .claude/goals/goal-*.json.lock/
 .claude/goals/index.json
 .claude/goals/session-*.goal
-.claude/goals/session-bindings.log
 .claude/goals/logs/
 .claude/goals/worktree-*/
 .claude/goals/PAUSE

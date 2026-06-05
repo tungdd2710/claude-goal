@@ -61,7 +61,7 @@ the SAME change (re-encode it as accuracy-driven) so the next agent isn't blocke
 Every stop/question defeats the entire purpose of the skill. TWO wired mechanisms enforce this:
 1. **PostToolUse reminder** (`goal-no-text-reminder.sh`) — while any goal is `active`, injects after
    every tool call: "do NOT write text; your next action MUST be a tool call." A soft nudge.
-2. **Stop hook** (`goal-stop-hook.sh`, wired in `.claude/settings.local.json`) — the real engine. When your
+2. **Stop hook** (`goal-stop-hook.sh`, wired in `.claude/settings.json`) — the real engine. When your
    turn would end, it **blocks the stop and feeds you the next-iteration instruction in the SAME
    session** (context preserved, no subprocess). It is **claim-scoped**: it only continues a session
    that wrote its claim file. So **write your claim at goal start** (see §Session claiming) — else the
@@ -162,9 +162,10 @@ When no `id` is given, the resume command uses this priority:
 
 3. **Cron-triggered resume** (`/goal resume` from durable cron): skips the picker, auto-picks the oldest unclaimed active goal. If all claimed, does nothing (other CLIs are handling them).
 
-**Session claiming (LOAD-BEARING — the Stop-hook engine keys off this):** The FIRST thing you do when
-creating or resuming a goal — before any code work — is write your claim, using the harness session-id
-env var. This is the SAME id `goal-stop-hook.sh` reads from its stdin, so they MUST match:
+**Session claiming (LOAD-BEARING — the Stop-hook engine keys off this):** `goal-init.sh` writes this
+claim for you on creation (when `CLAUDE_CODE_SESSION_ID` is set). On **resume**, or if you ever drive
+manually, write it yourself BEFORE any code work, using the harness session-id env var. This is the SAME
+id `goal-stop-hook.sh` reads from its stdin, so they MUST match:
 ```bash
 echo "<goal-id>" > ".claude/goals/session-${CLAUDE_CODE_SESSION_ID}.goal"
 ```
@@ -570,7 +571,7 @@ completion without asking, it is Tier 1 — call it directly. When unsure, treat
 
 - **NEVER ask the user anything during /goal.** Not AskUserQuestion, not "should I?", not "do you want?", not "which path?". The user said `/goal` — that means GO.
 - **Build, don't survey.** Research is only valuable when it directly informs the next edit. If you've spent 10+ tool calls reading without editing, you're stalling.
-- **Ship wrong, learn, iterate.** A fully-autonomous agent once shipped a catastrophic version AND, in the same session, the system that fixed it. The failures informed the success. My approach of "survey → ask → verify → ask again" produces zero lines of code.
+- **Ship wrong, learn, iterate.** A fully-autonomous agent once shipped a catastrophic version AND, in the same session, the system that fixed it. The failures informed the success. A "survey → ask → verify → ask again" loop produces zero lines of code.
 - **Make decisions, don't present options.** "3 possible paths" followed by a question = paralysis. Pick the highest-leverage path based on evidence and execute. If it fails, negative_knowledge captures why and the next iteration picks a different path.
 - **Verify claims with code, not questions.** Run the bench, read the output, compute the metric. Don't ask the user "is this real?"
 - **NEVER narrate idle status.** "Bench is running, waiting for results" is a stop. If a bench takes 2 hours, build the NEXT thing in parallel. Write the post-processor. Write the fix for the expected failure. Prepare iteration N+1's code while iteration N's bench runs. Stopping to report progress = stopping.
@@ -630,7 +631,7 @@ CronCreate(cron: "17 */2 * * *", durable: true, recurring: true,
 ```
 This fires every 2 hours and exists ONLY as a safety net for when the user closes the terminal or the machine sleeps. Within a running session, the agent NEVER relies on cron — it chains iterations continuously through auto-compaction. The cron is insurance, not the engine.
 
-**3. Session resume** — `goal-continue.sh` now outputs the session ID so the next invocation can use `claude --resume <id>` instead of cold `claude -p`, preserving conversation context.
+**3. Cross-session resume** — when a session dies (terminal closed, machine slept), the durable cron runs `goal-continue.sh`, which spawns one fresh `claude -p` for the next iteration; that spawned session then self-continues via the Stop hook. It orients entirely from the goal state file (`context_summary` + last reflection), so no in-memory conversation is needed.
 
 **For GPU bench runs:**
 - Start bench in tmux: `ssh <your-host> 'tmux new-session -d -s bench /tmp/run-bench.sh'` (survives SSH disconnect)
@@ -649,7 +650,7 @@ This fires every 2 hours and exists ONLY as a safety net for when the user close
 When a goal is active, the Claude Code footer shows:
 
 ```
-⎯ /goal:fix-n-plus-1 i3 │ Opus 4.8 │ Fixing query batching │ my-project ████░░░░░░ 38%
+⎯ /goal:fix-n-plus-1 i3 │ <model> │ Fixing query batching │ my-project ████░░░░░░ 38%
 ```
 
 Format: `⎯ /goal:<3-word-slug> i<iteration_count>` in purple. Shows only the goal THIS CLI session is working on, not all active goals.
@@ -658,7 +659,7 @@ Format: `⎯ /goal:<3-word-slug> i<iteration_count>` in purple. Shows only the g
 ```bash
 echo "<goal-id>" > ".claude/goals/session-${CLAUDE_CODE_SESSION_ID}.goal"
 ```
-The statusline reads this to show only the claimed goal. (Same claim file the Stop-hook engine keys off.) Falls back to showing the sole active goal if no claim file exists. Multiple CLIs each see their own goal.
+The statusline reads this to show only the claimed goal. (Same claim file the Stop-hook engine keys off.) If this session has no claim it shows nothing — each CLI sees only the goal it owns.
 
 Implemented in `.claude/scripts/goal-statusline.js`.
 
@@ -677,7 +678,7 @@ Multiple goals can run concurrently. Each goal:
 2. Multiple active + CWD inside a goal's worktree → match by `worktree_path`
 3. Multiple active + ambiguous → error listing goal IDs for explicit selection
 
-**Resume all**: `/goal resume` without an ID resumes all active goals. If 1 active goal, runs in foreground. If N active goals, spawns N-1 as background agents (each in their own worktree) and runs 1 in foreground.
+**Resume**: `/goal resume` without an ID uses the smart-picker (see §`/goal resume` above): if exactly one active goal is unclaimed it auto-picks and starts it; if several are unclaimed it lists them to choose from; if all are claimed by other live sessions it says so. The headless cron path (`goal-continue.sh`) auto-picks the oldest unclaimed active goal. To work several goals at once, start each in its own CLI session — each claims its own goal and worktree.
 
 **Migration**: Legacy `active.json` auto-migrates to `goal-{id}.json` + `index.json` on first call to `goal-resolve.sh`. No manual action needed.
 
@@ -691,41 +692,34 @@ Multiple goals can run concurrently. Each goal:
 - `goal-validate.sh [path]` — validate goal JSON schema
 - `goal-loop.sh [--goal-id ID]` — standalone headless iteration runner (budget auto-extends; sets GOAL_DRIVER_ACTIVE)
 - `goal-continue.sh` — cron / manual cross-session resume (NOT a Stop hook — wiring it as one recurses)
-- `goal-stop-hook.sh` (in `.claude/scripts/`) — Stop-hook autonomy engine: pure-block, claim-scoped, fail-open [WIRED in `.claude/settings.local.json`]
-- `goal-no-text-reminder.sh` (in `.claude/scripts/`) — PostToolUse `*` soft nudge: "next action must be a tool call" while THIS session's claimed goal is active [WIRED in `.claude/settings.local.json`]
+- `goal-stop-hook.sh` (in `.claude/scripts/`) — Stop-hook autonomy engine: pure-block, claim-scoped, fail-open [WIRED in `.claude/settings.json`]
+- `goal-no-text-reminder.sh` (in `.claude/scripts/`) — PostToolUse `*` soft nudge: "next action must be a tool call" while THIS session's claimed goal is active [WIRED in `.claude/settings.json`]
+- `goal-no-ask.sh` (in `.claude/scripts/`) — PreToolUse `AskUserQuestion` blocker: enforces never-ask while THIS session's claimed goal is active [WIRED in `.claude/settings.json`]
 
 ## Safety (wiring status — read before relying)
 
-> ⚠️ **Hook wiring reality (CREATED + WIRED + behaviorally tested 2026-05-29):** Both hooks now live in
-> `.claude/scripts/` and are WIRED in `.claude/settings.local.json` — `goal-no-text-reminder.sh` (PostToolUse
-> `*` soft nudge) AND `goal-stop-hook.sh` (Stop hook: **pure-block, no `claude -p` spawn**, claim-scoped,
-> fail-open; guards → ALLOW on `GOAL_DRIVER_ACTIVE` / `PAUSE` / no-claim-files / no-claim-for-this-session /
-> goal-not-`active` / any parse error). **Until 2026-05-29 these scripts did NOT exist and NO `Stop` hook was
-> wired in any settings file — THAT was the stall bug:** the never-stop contract was fully documented but
-> totally unenforced, so every turn-end actually stopped and the agent waited for the user. Verified this
-> session: ALLOW (exit 0, zero output) on garbage stdin / unknown session / empty stdin; emits a valid
-> `{"decision":"block","reason":<next-iteration EXECUTE instruction>}` ONLY when the session's own claim file
-> points to a goal whose `status == "active"`. In-session auto-continuation runs up to the harness's
-> ~8-consecutive-block cap (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`); past that the resume cron picks up.
-> **`goal-scope-check.sh` is ALSO now WIRED (2026-05-29)** as an `Edit|Write` PostToolUse hook, rewritten
-> claim-scoped + Windows-path-robust + fail-open: it reverts ONLY the just-edited file, ONLY for the session
-> whose claim owns the active goal, ONLY when that file is outside `scope_lock`+`scope_flex` — so it is safe to
-> leave on (a non-goal session has no claim and is never touched; verified in git-bash). Still opt-in: only the
-> cross-session resume cron (schedule via CronCreate for long goals). `goal-continue.sh` remains the cron/manual
-> resume target, **NOT** a Stop hook (wiring it as one recurses — a `-p` child fires its own Stop hooks). Net:
-> in-session never-stop + scope-lock + budget auto-extend + state integrity + immutable objective + negative
-> knowledge ARE enforced; only the cross-session resume cron remains opt-in.
+> ⚠️ **What `install.sh` wires.** Three core hooks go into `.claude/settings.json` plus the status line:
+> `goal-stop-hook.sh` (**Stop** — the autonomy engine: pure-block, no `claude -p` spawn, claim-scoped,
+> fail-open; ALLOWs the stop on every uncertainty — `GOAL_DRIVER_ACTIVE` / `PAUSE` / no claim files /
+> no claim for this session / goal not `active` / any parse error — and only emits
+> `{"decision":"block","reason":<next-iteration instruction>}` when this session's claim points at an
+> `active` goal), `goal-no-text-reminder.sh` (**PostToolUse `*`** anti-narration nudge), and `goal-no-ask.sh`
+> (**PreToolUse `AskUserQuestion`** never-ask). In-session auto-continuation runs up to the harness's
+> ~8-consecutive-block cap (`CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`); past that, the optional resume cron picks up.
+> The **scope-lock** hook (`goal-scope-check.sh`, `Edit|Write` PostToolUse) is **opt-in — NOT wired by
+> default**, because a too-narrow `scope_lock` would revert legitimate edits; enable it deliberately (see
+> SETUP.md). `goal-continue.sh` is the cron/manual resume target, **NOT** a Stop hook (wiring it as one
+> recurses — a `-p` child fires its own Stop hooks).
 >
-> **Stop-hook output schema (verified vs code.claude.com/docs/en/hooks, 2026-05-29 — the earlier code was WRONG):**
-> to continue, emit exit 0 + `{"decision":"block","reason":<USER note>,"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":<the instruction CLAUDE reads>}}`.
-> `reason` is shown to the USER only; the next-iteration instruction MUST live in `additionalContext` or Claude is
-> blocked-but-unguided (the bug that was fixed this session). **Matchers match the TOOL NAME only** (`Edit|Write`,
+> **Stop-hook output schema:** to continue, emit exit 0 + `{"decision":"block","reason":<the full next-iteration instruction>}`.
+> For the **Stop** event the harness reads the continuation text from `reason` (unlike SessionStart / UserPromptSubmit /
+> PostToolUse, where it rides in `hookSpecificOutput.additionalContext`) — so the whole brief lives in `reason`, which is
+> exactly what `goal-stop-hook.sh` emits. **Matchers match the TOOL NAME only** (`Edit|Write`,
 > `Bash`, `*` = all); arg-patterns like `Edit:*.test.*` / `Bash:*rm -rf*` NEVER match — use the per-handler `if`
 > field (`Edit(*.test.*)`, `Bash(rm -rf *)`) for argument filtering. PostToolUse cannot block (exit 2 only surfaces
-> stderr to Claude); PreToolUse blocks on exit 2 (NOT exit 1). NOTE: the repo's pre-existing `.env` + `rm -rf`
-> PreToolUse guards use the bad arg-matcher AND exit 1 → they currently never fire (a real safety hole, flagged).
+> stderr to Claude); PreToolUse blocks on exit 2 (NOT exit 1).
 
-- **Scope lock** *(WIRED 2026-05-29, claim-scoped)*: `goal-scope-check.sh` PostToolUse (`Edit|Write`) hook — claim-scoped (acts ONLY for the session owning the active goal, via stdin `session_id` → `session-<id>.goal`); reverts ONLY the just-edited file (from `tool_input.file_path`, normalizes Windows `C:\`/`/c/` paths) when it is outside `scope_lock`+`scope_flex`; fail-open on any uncertainty. A non-goal session (no claim) is NEVER touched (verified). **Caution:** for a CLAIMED goal session a too-narrow `scope_lock` will revert legitimate out-of-scope edits — keep `scope_flex` accurate.
+- **Scope lock** *(opt-in, claim-scoped)*: `goal-scope-check.sh` PostToolUse (`Edit|Write`) hook — claim-scoped (acts ONLY for the session owning the active goal, via stdin `session_id` → `session-<id>.goal`); reverts ONLY the just-edited file (from `tool_input.file_path`, normalizes Windows `C:\`/`/c/` paths) when it is outside `scope_lock`+`scope_flex`; fail-open on any uncertainty. A non-goal session (no claim) is NEVER touched. Not wired by default — enable per SETUP.md. **Caution:** for a CLAIMED goal session a too-narrow `scope_lock` will revert legitimate out-of-scope edits — keep `scope_flex` accurate.
 - **State integrity**: `goal-update-state.sh` (lockdir + validate + atomic rename + `.bak`)
 - **Immutable objective**: objective string NEVER changes after creation
 - **Criteria revision**: criteria CAN be revised during UNDERSTAND if auto-generated, but are frozen after iteration 1

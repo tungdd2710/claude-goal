@@ -21,7 +21,7 @@ fi
 
 # Basic sanitization: reject obviously dangerous patterns
 # Not a security boundary (determined attacker bypasses), but catches accidental injection
-DANGEROUS_PATTERNS='(rm\s+-rf\s+/|mkfs\.|dd\s+if=|chmod\s+-R\s+777\s+/|curl.*\|\s*bash|wget.*\|\s*sh|>\s*/etc/|eval\s+\$)'
+DANGEROUS_PATTERNS='(rm[[:space:]]+-[A-Za-z]*[rf][A-Za-z]*[[:space:]]+(-[A-Za-z]+[[:space:]]+)*(/|~|\*|\.([[:space:]]|$))|mkfs|dd[[:space:]]+if=|chmod[[:space:]]+-R[[:space:]]+777|curl[^|]*\|[[:space:]]*(ba)?sh|wget[^|]*\|[[:space:]]*(ba)?sh|>[[:space:]]*/etc/|:\(\)[[:space:]]*\{|git[[:space:]]+push[[:space:]][^|&;]*(--force|-f([[:space:]]|$))|(^|[[:space:]])sudo[[:space:]]|shred[[:space:]]|wipefs)'
 if echo "$CHECK_CMD" | grep -qE "$DANGEROUS_PATTERNS" 2>/dev/null; then
   echo "{\"pass\": false, \"label\": \"$LABEL\", \"exit_code\": -2, \"stdout_tail\": \"\", \"stderr_tail\": \"BLOCKED: command matches dangerous pattern\", \"duration_ms\": 0}"
   exit 0
@@ -31,21 +31,32 @@ TMPOUT=$(mktemp)
 TMPERR=$(mktemp)
 trap 'rm -f "$TMPOUT" "$TMPERR"' EXIT
 
-START_MS=$(($(date +%s%N 2>/dev/null || echo "$(date +%s)000000000") / 1000000))
+# Portable millisecond clock (python3 is a required dependency; macOS `date` lacks %N).
+_now_ms() { python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || echo 0; }
+START_MS=$(_now_ms)
 
-# Run in subshell with timeout
+# Run the check under a timeout. Prefer GNU `timeout`/`gtimeout`; stock macOS has
+# neither, so fall back to a python3 timeout (python3 is already required).
 if command -v timeout >/dev/null 2>&1; then
-  timeout "$TIMEOUT_SEC" bash -c "$CHECK_CMD" >"$TMPOUT" 2>"$TMPERR"
-  EXIT_CODE=$?
-  if [[ $EXIT_CODE -eq 124 ]]; then
-    echo "TIMEOUT after ${TIMEOUT_SEC}s" >> "$TMPERR"
-  fi
+  timeout "$TIMEOUT_SEC" bash -c "$CHECK_CMD" >"$TMPOUT" 2>"$TMPERR"; EXIT_CODE=$?
+elif command -v gtimeout >/dev/null 2>&1; then
+  gtimeout "$TIMEOUT_SEC" bash -c "$CHECK_CMD" >"$TMPOUT" 2>"$TMPERR"; EXIT_CODE=$?
 else
-  bash -c "$CHECK_CMD" >"$TMPOUT" 2>"$TMPERR"
+  python3 - "$TIMEOUT_SEC" "$CHECK_CMD" >"$TMPOUT" 2>"$TMPERR" <<'PYTO'
+import subprocess, sys
+secs = float(sys.argv[1]); cmd = sys.argv[2]
+try:
+    sys.exit(subprocess.run(["bash", "-c", cmd], timeout=secs).returncode)
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+PYTO
   EXIT_CODE=$?
 fi
+if [[ $EXIT_CODE -eq 124 ]]; then
+  echo "TIMEOUT after ${TIMEOUT_SEC}s" >> "$TMPERR"
+fi
 
-END_MS=$(($(date +%s%N 2>/dev/null || echo "$(date +%s)000000000") / 1000000))
+END_MS=$(_now_ms)
 DURATION=$((END_MS - START_MS))
 
 STDOUT_TAIL=$(tail -5 "$TMPOUT" 2>/dev/null | head -c 500 || echo "")

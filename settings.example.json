@@ -1,5 +1,5 @@
 {
-  "_comment": "claude-goal hook wiring. Merge these blocks into your project's .claude/settings.json (or settings.local.json). install.sh can do this merge for you. The four hooks + statusline are what make /goal autonomous; see docs/ARCHITECTURE.md for what each one does. ${CLAUDE_PROJECT_DIR:-.} resolves to your project root with a safe fallback.",
+  "_comment": "claude-goal hook wiring. install.sh merges these into your project's .claude/settings.json (with backup + dedupe). These THREE core hooks + the statusline are what make /goal autonomous; see docs/ARCHITECTURE.md for what each does. The scope-lock hook (goal-scope-check.sh) is intentionally NOT here — it is OPT-IN, because it auto-reverts out-of-scope edits and a too-narrow scope can discard real work; enable it deliberately per docs/SETUP.md. ${CLAUDE_PROJECT_DIR:-.} resolves to your project root with a safe fallback.",
 
   "hooks": {
     "Stop": [
@@ -13,15 +13,6 @@
       }
     ],
     "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; bash .claude/scripts/goal-scope-check.sh 2>/dev/null || true"
-          }
-        ]
-      },
       {
         "matcher": "*",
         "hooks": [

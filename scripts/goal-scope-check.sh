@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# goal-scope-check.sh — PostToolUse scope-lock guard for /goal (v1.0.0 claim-scoped rewrite, 2026-05-29).
+# goal-scope-check.sh — PostToolUse scope-lock guard for /goal (v1.0.0, claim-scoped).
 #
 # Reverts the JUST-EDITED file when it falls outside the active goal's scope_lock +
 # scope_flex — but ONLY for the session that CLAIMED that goal (claim-scoped, like

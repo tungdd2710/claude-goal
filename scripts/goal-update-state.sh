@@ -33,8 +33,8 @@ LOCKDIR="${GOAL_FILE}.lock"
 LOCK_ATTEMPTS=0
 while ! mkdir "$LOCKDIR" 2>/dev/null; do
   LOCK_ATTEMPTS=$((LOCK_ATTEMPTS + 1))
-  if [[ $LOCK_ATTEMPTS -ge 30 ]]; then
-    echo "Could not acquire lock after 30 attempts. Stale lock? rm -rf $LOCKDIR" >&2
+  if [[ $LOCK_ATTEMPTS -ge 100 ]]; then
+    echo "Could not acquire lock after 100 attempts. Stale lock? rm -rf $LOCKDIR" >&2
     exit 1
   fi
   sleep 0.1
@@ -127,6 +127,10 @@ while i < len(args):
                     return v >= c['target'] if c.get('direction', 'gte') == 'gte' else v <= c['target']
                 return bool(v)
             unmet = [c.get('label') for c in crits if not _cpass(c.get('label'))]
+            if not crits:
+                print('CANNOT COMPLETE: no success_criteria defined. Derive criteria in iteration 1 '
+                      '(survey + --set-criteria) before completing, or use --status blocked.', file=sys.stderr)
+                sys.exit(1)
             if crits and unmet:
                 print('CANNOT COMPLETE: criteria not passing in the latest iteration: ' + ', '.join(map(str, unmet)) +
                       '. Make them pass (fix the REAL problem) or use --status blocked with negative_knowledge. '
@@ -144,9 +148,11 @@ while i < len(args):
             _me = os.environ.get('CLAUDE_CODE_SESSION_ID', '')
             _gid = g.get('id', '')
             _foreign = []
-            for _cf in glob.glob(os.path.join(_gdir, 'session-*.goal')):
+            # Only enforce if we can identify THIS session. With CLAUDE_CODE_SESSION_ID unset we
+            # cannot tell our own claim from a peer's, so skip (fail-open) rather than refuse the owner.
+            for _cf in (glob.glob(os.path.join(_gdir, 'session-*.goal')) if _me else []):
                 _sid = os.path.basename(_cf)[len('session-'):-len('.goal')]
-                if _me and _sid == _me:
+                if _sid == _me:
                     continue  # my own claim — never blocks me
                 try:
                     _claimed = open(_cf).read().strip()
@@ -381,8 +387,10 @@ while i < len(args):
         i += 1
         while i < len(args) and args[i] in ('--tool-calls', '--tokens', '--new-session'):
             if args[i] == '--tool-calls':
+                if i+1 >= len(args): print('--tool-calls requires value', file=sys.stderr); sys.exit(1)
                 m['total_tool_calls'] = m.get('total_tool_calls', 0) + int(args[i+1]); i += 2
             elif args[i] == '--tokens':
+                if i+1 >= len(args): print('--tokens requires value', file=sys.stderr); sys.exit(1)
                 m['total_tokens_estimated'] = m.get('total_tokens_estimated', 0) + int(args[i+1]); i += 2
             elif args[i] == '--new-session':
                 m['session_count'] = m.get('session_count', 0) + 1; i += 1

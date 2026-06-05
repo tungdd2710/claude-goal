@@ -11,7 +11,7 @@
 #     --check "npx vitest run" --label "Tests pass" \
 #     --max 5
 
-set -eo pipefail
+set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 GOALS_DIR="$REPO_ROOT/.claude/goals"
@@ -105,21 +105,13 @@ for g in idx.get('goals', []):
 if [[ ${#CHECKS[@]} -eq 0 ]]; then
   CRITERIA_JSON="[]"
 else
-  CRITERIA_TMP=$(mktemp)
-  trap 'rm -f "$CRITERIA_TMP"' EXIT
-  for i in "${!CHECKS[@]}"; do
-    printf '%s\n' "${CHECKS[$i]}" >> "$CRITERIA_TMP"
-    printf '%s\n' "${LABELS[$i]}" >> "$CRITERIA_TMP"
-  done
+  # checks then labels passed as argv — newline-safe, no temp-file line protocol
   CRITERIA_JSON=$(python3 -c "
 import json, sys
-lines = open(sys.argv[1]).read().strip().split('\n')
-criteria = []
-for i in range(0, len(lines), 2):
-    if i+1 < len(lines):
-        criteria.append({'check': lines[i], 'label': lines[i+1], 'auto': False})
-print(json.dumps(criteria, ensure_ascii=False))
-" "$CRITERIA_TMP")
+n = (len(sys.argv) - 1) // 2
+checks, labels = sys.argv[1:1+n], sys.argv[1+n:1+2*n]
+print(json.dumps([{'check': c, 'label': l, 'auto': False} for c, l in zip(checks, labels)], ensure_ascii=False))
+" "${CHECKS[@]}" "${LABELS[@]}")
 fi
 
 # Use worktree if other active goals exist (isolation)
@@ -206,16 +198,27 @@ if [[ -n "$WORKTREE_PATH" ]]; then
   else
     echo "Note: worktree creation failed. Will run in main tree." >&2
     python3 -c "
-import json, sys
+import json, sys, os
 gf = sys.argv[1]
 g = json.load(open(gf))
 g['worktree_path'] = ''
-json.dump(g, open(gf, 'w'), indent=2, ensure_ascii=False)
+tmp = gf + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(g, f, indent=2, ensure_ascii=False)
+os.replace(tmp, gf)
 " "$GOAL_FILE"
   fi
 fi
 
 cp "$GOAL_FILE" "$GOAL_FILE.bak"
+
+# Write THIS session's claim so the Stop-hook engine auto-continues this session
+# (LOAD-BEARING — see SKILL.md §Session claiming). Without a claim the never-stop
+# loop silently dies on the first turn-end. Idempotent; skipped when the env var is
+# unset (e.g. headless goal-loop.sh, which drives via GOAL_DRIVER_ACTIVE instead).
+if [[ -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
+  echo "$GOAL_ID" > "$GOALS_DIR/session-${CLAUDE_CODE_SESSION_ID}.goal"
+fi
 
 echo ""
 echo "  GOAL CREATED (v0.4.0 multi-goal)"

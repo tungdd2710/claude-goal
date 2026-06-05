@@ -25,14 +25,6 @@ if os.path.exists(claim):
     try:
         if open(claim).read().strip() in active: bound=True
     except Exception: pass
-if not bound:
-    blog=os.path.join(gd,"session-bindings.log")
-    if os.path.exists(blog):
-        try:
-            for ln in open(blog):
-                p=ln.split()
-                if len(p)>=2 and p[0]==sid and p[1] in active: bound=True; break
-        except Exception: pass
 print("BLOCK" if bound else "")
 ' "$GOALS_DIR" "$INPUT" 2>/dev/null || echo '')
 if [ "$BOUND" = "BLOCK" ]; then

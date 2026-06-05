@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# goal-no-text-reminder.sh — PostToolUse soft nudge for /goal (v1.0.0, 2026-05-29).
+# goal-no-text-reminder.sh — PostToolUse soft nudge for /goal (v1.0.0).
 #
 # While THIS session owns an active goal, inject a reminder after every tool call
 # that the next action must be a tool call, never prose. Claim-scoped: silent for

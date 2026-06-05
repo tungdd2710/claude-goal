@@ -1,57 +1,91 @@
-# /goal Setup Guide (for goal-skill v0.10.0)
+# Setup & quick reference
 
-## What changed from v0.2
+This is the hands-on setup/reference for `claude-goal`. For *what it is and why*, see the
+[README](../README.md); for *how the engine works*, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-- **Walk-away mode**: just provide a goal string. Agent derives criteria, scope, and budget.
-- **Two-mode iterations**: iter 1 = UNDERSTAND (research + probe fix). Iter 2+ = EXECUTE.
-- **Structured reflections**: each iteration ends with 3-field JSON that guides the next.
-- **Auto-criteria**: agent discovers what verification infra exists and generates criteria from that.
+## Install
 
-## Installation
+```bash
+git clone https://github.com/tungdd2710/claude-goal.git
+cd claude-goal
+bash install.sh /path/to/your/project    # omit the path to install into the current dir
+```
 
-### Scripts (in `.claude/scripts/`) + hooks (in `.claude/hooks/`)
-- `goal-validate.sh` — JSON + schema validation
-- `goal-update-state.sh` — atomic state mutation (lockdir + backup); `--update-metrics`, criterion linter, numeric outcome
-- `goal-check-criterion.sh` — structured criterion runner (timeout + numeric `value` extraction)
-- `goal-resolve.sh` / `goal-list.sh` / `goal-init.sh` — resolve / list / create goals
-- `goal-loop.sh` — standalone headless loop runner (budget auto-extends; sets `GOAL_DRIVER_ACTIVE`)
-- `goal-continue.sh` — CRON / manual cross-session resume (NOT a Stop hook)
-- `goal-no-text-reminder.sh` (hooks/) — PostToolUse soft nudge **[WIRED]**
-- `goal-stop-hook.sh` (hooks/) — Stop-hook autonomy engine: claim-scoped, fail-open **[WIRED]**
+`install.sh` is idempotent (safe to re-run to upgrade). It:
 
-### Hooks
+1. copies the scripts → `your-project/.claude/scripts/`
+2. copies the skill → `your-project/.claude/skills/goal/SKILL.md`
+3. creates the runtime dir → `your-project/.claude/goals/` (with a `.gitignore` for generated state)
+4. merges the **three core hooks + status line** into `your-project/.claude/settings.json`
+   (backs up any existing file; never double-wires)
 
-**Already wired in `.claude/settings.json`** (no action needed):
-- **PostToolUse** → `goal-no-text-reminder.sh` — soft "don't write text, call a tool" nudge while a goal is active.
-- **Stop** → `goal-stop-hook.sh` — the autonomy engine. Claim-scoped + fail-open: blocks the stop and
-  continues IN-SESSION only for the session that wrote `.claude/goals/session-$CLAUDE_CODE_SESSION_ID.goal`,
-  and only while that goal is `active`. Guards: `stop_hook_active` (anti-runaway), `PAUSE` sentinel,
-  `GOAL_DRIVER_ACTIVE` (goal-loop.sh sets it so its `-p` children don't double-drive).
+Then **restart Claude Code** so it reloads the hooks. Verify with `/goal list` (should say "no goals").
 
-> ⚠️ Do NOT wire `goal-continue.sh` as a Stop hook — it spawns `claude -p`, whose child fires its own
-> Stop hooks → runaway recursion. `goal-continue.sh` is for **cron / manual cross-session resume** only.
+## What gets wired
 
-**Optional opt-in** — add to `.claude/settings.local.json` for scope-lock auto-revert (reverts any edit
-outside `scope_lock`/`scope_flex`; a too-narrow scope silently discards real work, so use deliberately):
+| Event | Script | Role |
+|---|---|---|
+| `Stop` | `goal-stop-hook.sh` | The autonomy engine — blocks the turn-end and feeds the next iteration back in-session. Claim-scoped, fail-open. |
+| `PreToolUse` (matcher `AskUserQuestion`) | `goal-no-ask.sh` | Blocks the agent from asking you questions mid-goal. |
+| `PostToolUse` (matcher `*`) | `goal-no-text-reminder.sh` | Nudges the agent to keep calling tools instead of writing prose. |
+| `statusLine` | `goal-statusline.js` | Shows the goal this session owns + iteration count. |
+
+> Matchers match the **tool name only** (`AskUserQuestion`, `Edit|Write`, `*`). Argument-glob matchers
+> like `Edit:*` or `Bash:*rm*` never fire — that's why filtering happens inside the scripts.
+
+## Manual wiring (if you don't use install.sh)
+
+1. Copy `scripts/*` into `your-project/.claude/scripts/` and `skill/SKILL.md` into
+   `your-project/.claude/skills/goal/`.
+2. Merge the `hooks` + `statusLine` blocks from [`settings.example.json`](../settings.example.json)
+   into `your-project/.claude/settings.json`.
+3. Restart Claude Code.
+
+## Optional: enable the scope-lock hook (opt-in)
+
+`goal-scope-check.sh` auto-**reverts** any edit outside the active goal's `scope_lock` + `scope_flex`
+(even edits from fanned-out subagents). It's powerful but a too-narrow scope can discard real work, so
+it is **not** wired by default. To enable it, add this PostToolUse entry to your `.claude/settings.json`
+(alongside the `*` reminder hook):
+
 ```json
 {
   "hooks": {
-    "PostToolUse": [{
-      "matcher": "Edit:*|Write:*",
-      "hooks": [{"type": "command", "command": "bash .claude/scripts/goal-scope-check.sh"}]
-    }]
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; bash .claude/scripts/goal-scope-check.sh 2>/dev/null || true" }
+        ]
+      }
+    ]
   }
 }
 ```
 
-**Cross-session resume cron** (for multi-day goals — schedule once when you start one):
+It is claim-scoped + fail-open, so a session that isn't running a goal is never touched. Keep
+`scope_flex` accurate to avoid reverting legitimate edits.
+
+## Kill switch & disable
+
+- **Pause all goals instantly:** `touch .claude/goals/PAUSE` (delete the file to resume). Every
+  session's Stop hook honors `PAUSE` before any goal logic.
+- **Disable the engine entirely:** remove the `Stop` block from `.claude/settings.json`.
+
+> Do NOT wire `goal-continue.sh` as a Stop hook — it spawns `claude -p`, whose child fires its own Stop
+> hooks → runaway recursion. It is the **cron / manual cross-session resume** target only.
+
+## Cross-session resume cron (multi-day goals)
+
+Schedule once, from inside Claude Code, when you start a long goal:
+
 ```
 CronCreate(cron: "17 */2 * * *", durable: true, recurring: true,
   prompt: "/goal resume -- check .claude/goals/index.json for all active goals, resume each")
 ```
 
-To pause everything: `touch .claude/goals/PAUSE` (delete to resume). To disable the engine entirely:
-remove the `Stop` block from `.claude/settings.json`.
+It only acts if a goal is unclaimed/unfinished. Delete it when the goal completes. Within a running
+session you don't need it — the Stop hook drives the loop.
 
 ## Usage
 
@@ -59,9 +93,9 @@ remove the `Stop` block from `.claude/settings.json`.
 ```
 /goal Fix all N+1 queries in the dashboard
 ```
-Agent surveys codebase, generates criteria, sets scope, does probe fix, then loops.
+The agent surveys the codebase, derives criteria, sets scope, does a probe fix, then loops.
 
-### Explicit (with overrides)
+### Explicit (headless / overrides)
 ```bash
 bash .claude/scripts/goal-init.sh \
   --objective "Add auth tests to 80% coverage" \
@@ -72,13 +106,16 @@ bash .claude/scripts/goal-loop.sh
 ```
 
 ### Loop runner options
-- `--max N` — override iteration budget
-- `--model MODEL` — model selection (default: claude-sonnet-4-6)
+- `--max N` — override the initial iteration budget (auto-extends anyway)
+- `--model MODEL` — model id (default: `claude-sonnet-4-6`; or set `GOAL_MODEL`)
 - `--max-turns N` — tool calls per iteration (default: 30)
 
-## How Reflection Works
+See [TAILORING.md](TAILORING.md) to point criteria, the coverage gate, and deploy verification at your
+own stack.
 
-Each iteration ends with a structured 3-field JSON:
+## How reflection works
+
+Each iteration ends with a structured 3-field JSON written via `goal-update-state.sh --reflect`:
 ```json
 {
   "outcome_reason": "Why this iteration's outcome was what it was",
@@ -86,7 +123,6 @@ Each iteration ends with a structured 3-field JSON:
   "research_files": ["files/to/read/before/next/iteration"]
 }
 ```
-
-The next iteration reads this to know what to do. If `research_files` is non-empty,
-the agent reads those files before making changes. This replaces the rigid
-multi-iteration planning that rots — each iteration plans only the next one.
+The next iteration reads this to know what to do. If `research_files` is non-empty, the agent reads
+those files before editing. This replaces rigid multi-iteration plans that rot — each iteration plans
+only the next one.

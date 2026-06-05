@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# goal-stop-hook.sh — Stop-hook autonomy engine for /goal (v1.0.0, created 2026-05-29).
+# goal-stop-hook.sh — Stop-hook autonomy engine for /goal (v1.0.0).
 #
 # THE in-session never-stop engine. Wired as a `Stop` hook in
-# .claude/settings.local.json. When a session tries to end its turn, this hook
+# .claude/settings.json. When a session tries to end its turn, this hook
 # BLOCKS the stop and feeds the next-iteration EXECUTE instruction back into the
 # SAME session (context preserved, no subprocess).
 #
@@ -103,8 +103,8 @@ Step 3 VERIFY — re-run ALL criteria (criteria_after); `bash .claude/scripts/go
 Step 4 REFLECT + CONTEXT + COMMIT — `--reflect /tmp/goal-reflect.json`; `--set-context-summary "Iteration %d done. <changed>. Next: <next>."`; `--update-metrics`; commit `goal(%s): iteration %d — <summary>`.
 Your NEXT action is a TOOL CALL for iteration %d Step 1 — never prose.""" % (
     gid, nxt, mx, obj, gid, cs, focus, gid, crit, banned, gid, nxt, nxt, gid, nxt, nxt + 1)
-# Stop hooks read ONLY top-level decision + reason (verified against code.claude.com/docs/en/hooks
-# 2026-05-29: the Stop "decision control" pattern is decision/reason; additionalContext is honored
+# Stop hooks read ONLY top-level decision + reason (per the Claude Code hooks docs:
+# the Stop "decision control" pattern is decision/reason; additionalContext is honored
 # only for SessionStart/Setup/SubagentStart/UserPromptSubmit/PostToolUse — NOT Stop). So the full
 # continuation brief MUST ride in `reason`, else Claude is blocked-but-unguided and re-stops every
 # turn until the harness block cap fires — the exact pointless loop this hook exists to prevent.

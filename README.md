@@ -31,7 +31,7 @@ criteria pass.
 - [How it works (the engine)](#how-it-works-the-engine)
 - [Install](#install)
 - [Commands](#commands)
-- [The four hooks](#the-four-hooks)
+- [The hooks](#the-hooks)
 - [Tailoring it to your project & deploy system](#tailoring-it-to-your-project--deploy-system)
 - [The rules & the memory it relies on](#the-rules--the-memory-it-relies-on)
 - [Safety & the kill switch](#safety--the-kill-switch)
@@ -114,7 +114,7 @@ right task and a bad one for the wrong task.
 
 ## How it works (the engine)
 
-The whole system is four hooks, a dozen small bash/python scripts, and a JSON state file per goal. The
+The whole system is four hooks (three wired by default, scope-lock opt-in), ~13 small bash/python scripts, and a JSON state file per goal. The
 load-bearing piece is the **`Stop` hook** (`goal-stop-hook.sh`):
 
 1. When a session's turn is about to end, Claude Code runs the `Stop` hook.
@@ -132,9 +132,9 @@ Two boundaries the in-session loop can't cross by itself — Claude Code overrid
 the optional resume **cron** (for session death). Inside those boundaries the agent simply never ends
 its turn while the goal is active.
 
-Three more hooks reinforce it: a `PreToolUse` hook that blocks `AskUserQuestion` (never-ask), a
-`PostToolUse` "nudge" that reminds the agent its next action must be a tool call, not prose, and a
-`PostToolUse` scope-lock that reverts out-of-scope edits.
+Two more hooks reinforce it by default — a `PreToolUse` hook that blocks `AskUserQuestion` (never-ask)
+and a `PostToolUse` "nudge" that keeps the agent making tool calls instead of writing prose. A fourth,
+opt-in `PostToolUse` scope-lock hook reverts out-of-scope edits when you enable it.
 
 > Full mechanics — state-file schema, the completion/coverage guards in `goal-update-state.sh`, the
 > Stop-hook output schema, the iteration protocol — are in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
@@ -154,7 +154,7 @@ bash install.sh /path/to/your/project     # omit the path to install into the cu
 
 The installer copies the scripts to `your-project/.claude/scripts/`, the skill to
 `your-project/.claude/skills/goal/`, creates the runtime dir `your-project/.claude/goals/`, and
-**merges** the four hooks + status line into `your-project/.claude/settings.json` (backing up any
+**merges** the three core hooks + status line into `your-project/.claude/settings.json` (backing up any
 existing file and never double-wiring). Then **restart Claude Code** so it reloads the hooks.
 
 Prefer to wire it by hand? Copy `scripts/` into `.claude/scripts/`, copy `skill/SKILL.md` into
@@ -185,18 +185,20 @@ bash .claude/scripts/goal-loop.sh        # runs the iteration loop in the termin
 
 ---
 
-## The four hooks
+## The hooks
 
 | Hook | Event | File | Effect |
 |---|---|---|---|
 | **Autonomy engine** | `Stop` | `goal-stop-hook.sh` | Blocks the turn-end and injects the next iteration in-session. Claim-scoped, fail-open. **This is the engine.** |
 | **No-ask** | `PreToolUse` (`AskUserQuestion`) | `goal-no-ask.sh` | Blocks the agent from asking you questions while a goal bound to this session is active. |
 | **No-narration nudge** | `PostToolUse` (`*`) | `goal-no-text-reminder.sh` | Soft reminder after every tool call: don't write prose, call the next tool. Kills the "summary paragraph" stop-drift. |
-| **Scope lock** | `PostToolUse` (`Edit\|Write`) | `goal-scope-check.sh` | Reverts the just-edited file if it's outside the goal's `scope_lock` + `scope_flex`. Claim-scoped, fail-open. |
+| **Scope lock** *(opt-in)* | `PostToolUse` (`Edit\|Write`) | `goal-scope-check.sh` | Reverts the just-edited file if it's outside the goal's `scope_lock` + `scope_flex`. Claim-scoped, fail-open. **Not wired by default** — see [docs/SETUP.md](docs/SETUP.md). |
 
 All four are **claim-scoped** (they only act for the session that started a goal) and **fail-open**
 (any error or uncertainty → do nothing), so they are safe to leave wired permanently — a normal
-session that never runs a goal is never affected.
+session that never runs a goal is never affected. `install.sh` wires the first three by default; the
+scope-lock hook is **opt-in** (auto-revert is powerful, but a too-narrow scope can discard work) — see
+[docs/SETUP.md](docs/SETUP.md) to enable it.
 
 ---
 
@@ -243,7 +245,7 @@ real and are part of this release:
 - **It won't terminate another live CLI's goal**, won't change a goal's immutable objective, and
   freezes criteria after iteration 1 (so it can't "move the goalposts" to declare victory).
 - **It won't mark complete with criteria failing** or with a coverage gate unmet.
-- Criterion commands run with a 60s timeout and a dangerous-pattern block (`rm -rf /`, `mkfs`, etc.).
+- Criterion commands run with a 60s timeout and a **best-effort** dangerous-pattern block (`rm -rf`, `mkfs`, `dd`, fork-bombs, `sudo`, force-push, …). This is **not a security boundary**: criteria you set run arbitrary shell under your account, so only put commands you trust into a goal's criteria.
 
 ---
 
@@ -253,7 +255,7 @@ real and are part of this release:
 - **bash** — the scripts are bash (works on macOS, Linux, and Windows via Git Bash / WSL).
 - **python3** — used for all JSON state mutation and validation.
 - **git** — branches, worktrees, and the commit rhythm; `git rev-parse` is how scripts find the repo root.
-- **node** — only for the status line (`goal-statusline.js`). Everything else works without it.
+- **node** (v18+, which Claude Code already requires) — only for the status line (`goal-statusline.js`). Everything else works without it.
 
 ---
 
@@ -264,7 +266,7 @@ claude-goal/
 ├── README.md
 ├── LICENSE                     # MIT
 ├── install.sh                  # one-command installer (copy + merge settings)
-├── settings.example.json       # the 4 hooks + statusLine, ready to merge
+├── settings.example.json       # the 3 core hooks + statusLine, ready to merge
 ├── skill/
 │   └── SKILL.md                # the /goal skill (the brain — full contract + protocol)
 ├── scripts/                    # → installs to <project>/.claude/scripts/
@@ -286,7 +288,7 @@ claude-goal/
 │   ├── PRINCIPLES.md           # the operating rules the loop relies on
 │   ├── TAILORING.md            # adapt criteria / gates / model / DEPLOY to your stack
 │   ├── MEMORY.md               # the memory convention
-│   └── SETUP.md                # original setup notes
+│   └── SETUP.md                # hands-on setup + quick reference
 └── memory/                     # de-branded skill-related memory starter pack
 ```
 

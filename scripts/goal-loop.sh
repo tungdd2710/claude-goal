@@ -29,8 +29,8 @@ done
 
 GOAL_FILE=$(bash "$RESOLVE" ${_GID_ARG:+--goal-id "$_GID_ARG"})
 
-STATUS=$(bash "$VALIDATE" "$GOAL_FILE")
-VALIDATE_EXIT=$?
+VALIDATE_EXIT=0
+STATUS=$(bash "$VALIDATE" "$GOAL_FILE") || VALIDATE_EXIT=$?
 if [[ $VALIDATE_EXIT -eq 1 ]]; then
   echo "No active goal. Use /goal or goal-init.sh to create one." >&2; exit 1
 elif [[ $VALIDATE_EXIT -ge 2 ]]; then

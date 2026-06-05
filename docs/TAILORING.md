@@ -64,12 +64,12 @@ If your objective says "all", register a coverage gate so completion requires 10
 
 ```bash
 bash .claude/scripts/goal-update-state.sh --goal-id <id> --set-coverage \
-  "grep -rLc 'orgId' src/api --include=route.ts | wc -l" \
+  "grep -rl 'orgId' src/api --include=route.ts | wc -l" \
   "find src/api -name route.ts | wc -l"
 ```
 
 - **TOTAL_CMD** prints the live denominator from the codebase (e.g. *all* route files).
-- **COVERED_CMD** prints how many you've verified-OK.
+- **COVERED_CMD** prints how many you've verified-OK (here: route files that DO contain `orgId`).
 - Both re-run at completion; `covered < total` → can't complete. The denominator can't be faked.
 
 ---

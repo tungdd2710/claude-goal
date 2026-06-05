@@ -30,8 +30,8 @@ Three things make the loop *continuous*:
 2. **The `context_summary`** — refreshed every iteration so the loop survives auto-compaction.
 3. **The optional cron** (`goal-continue.sh`) — restarts an unfinished goal after the session dies.
 
-Plus three reinforcing hooks (no-ask, no-narration, scope-lock) that stop the agent from drifting out
-of the loop in other ways.
+Plus three reinforcing hooks — no-ask and no-narration (wired by default) and scope-lock (opt-in) — that
+stop the agent from drifting out of the loop in other ways.
 
 ---
 
@@ -97,8 +97,9 @@ INPUT (stdin JSON from Claude Code)  ──►  goal-stop-hook.sh
 | `goal-no-text-reminder.sh` | `PostToolUse` / `*` | If this session owns an active goal, emit `additionalContext` reminding the agent its next action must be a tool call, not prose. Pure nudge — cannot block. Silent for non-goal sessions. |
 | `goal-scope-check.sh` | `PostToolUse` / `Edit\|Write` | If this session owns an active goal and the just-edited file (`tool_input.file_path`) is outside `scope_lock`+`scope_flex`, revert it (`git checkout HEAD --` for tracked, `rm` for new) and **exit 2** to surface why. Normalizes Windows/Git-Bash paths. Fail-open. |
 
-All four hooks share the same claim-scoped + fail-open spine, which is why they're safe to wire
-globally — a session that isn't running a goal is invisible to all of them.
+All four hooks share the same claim-scoped + fail-open spine. `install.sh` wires the first three by
+default; the scope-lock hook is **opt-in** (enable it per [SETUP.md](SETUP.md)). A session that isn't
+running a goal is invisible to all of them.
 
 ---
 
