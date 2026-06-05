@@ -35,6 +35,7 @@ criteria pass.
 - [Tailoring it to your project & deploy system](#tailoring-it-to-your-project--deploy-system)
 - [The rules & the memory it relies on](#the-rules--the-memory-it-relies-on)
 - [Safety & the kill switch](#safety--the-kill-switch)
+- [Maturity, evaluation & limitations](#maturity-evaluation--limitations)
 - [Requirements](#requirements)
 - [Repository layout](#repository-layout)
 - [FAQ](#faq)
@@ -109,6 +110,9 @@ This skill deliberately changes the agent's behavior at the session level. Know 
 
 In short: you trade *control at each step* for *not having to be there.* That's a great trade for the
 right task and a bad one for the wrong task.
+
+> For a full, evidence-labelled assessment — what's **verified** vs **inherited design claim**, every
+> failure mode, and how to evaluate it on your own setup — see **[docs/EVALUATION.md](docs/EVALUATION.md)**.
 
 ---
 
@@ -249,6 +253,27 @@ real and are part of this release:
 
 ---
 
+## Maturity, evaluation & limitations
+
+`claude-goal` is an **extraction** from a private production codebase where the engine ran real
+multi-hour goals — not a from-scratch release. Be honest with yourself about what that means:
+
+- **Verified here:** the scripts/hooks/install/guards work at the unit level (they parse; the installer
+  wires correctly; the completion/coverage guards fire; the danger filter blocks footguns; the
+  statusline + state mutations work). Reproduction commands are in [docs/EVALUATION.md](docs/EVALUATION.md).
+- **Not benchmarked here:** there is **no success-rate data** for "given N real objectives, M completed
+  correctly unattended" in this de-branded packaging. Treat early runs as experiments.
+- **Biggest dependency:** the never-stop engine relies on a claim file matching Claude Code's session id
+  (`CLAUDE_CODE_SESSION_ID`). `goal-init.sh` writes it automatically, but **verify on your setup** that
+  `.claude/goals/session-*.goal` appears after `/goal`.
+- **"Complete" is only as honest as your criteria**, there is **no budget cap** (real cost), it
+  **commits autonomously**, and the criterion sandbox is **not a security boundary**.
+
+➡️ Read **[docs/EVALUATION.md](docs/EVALUATION.md)** before trusting it with a long unattended run — it
+covers every limitation, when *not* to use it, and a "evaluate it yourself" checklist.
+
+---
+
 ## Requirements
 
 - **Claude Code** (CLI / desktop / IDE) — this is a Claude Code skill.
@@ -288,7 +313,8 @@ claude-goal/
 │   ├── PRINCIPLES.md           # the operating rules the loop relies on
 │   ├── TAILORING.md            # adapt criteria / gates / model / DEPLOY to your stack
 │   ├── MEMORY.md               # the memory convention
-│   └── SETUP.md                # hands-on setup + quick reference
+│   ├── SETUP.md                # hands-on setup + quick reference
+│   └── EVALUATION.md           # honest assessment: limitations, failure modes, what's verified
 └── memory/                     # de-branded skill-related memory starter pack
 ```
 
