@@ -1,0 +1,53 @@
+{
+  "_comment": "claude-goal hook wiring. Merge these blocks into your project's .claude/settings.json (or settings.local.json). install.sh can do this merge for you. The four hooks + statusline are what make /goal autonomous; see docs/ARCHITECTURE.md for what each one does. ${CLAUDE_PROJECT_DIR:-.} resolves to your project root with a safe fallback.",
+
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; bash .claude/scripts/goal-stop-hook.sh 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; bash .claude/scripts/goal-scope-check.sh 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; bash .claude/scripts/goal-no-text-reminder.sh 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; bash .claude/scripts/goal-no-ask.sh 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+
+  "statusLine": {
+    "type": "command",
+    "command": "node .claude/scripts/goal-statusline.js"
+  }
+}

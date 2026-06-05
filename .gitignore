@@ -1,0 +1,26 @@
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Logs
+*.log
+
+# Node (only if you add tooling later)
+node_modules/
+
+# --- Runtime goal artifacts (created when you actually RUN a goal in a project) ---
+# These belong to the project you install claude-goal INTO, not to this repo.
+# Listed here so that if you test a goal inside this repo, the state isn't committed.
+.claude/goals/goal-*.json
+.claude/goals/goal-*.json.bak
+.claude/goals/goal-*.json.tmp
+.claude/goals/goal-*.json.lock/
+.claude/goals/index.json
+.claude/goals/session-*.goal
+.claude/goals/session-bindings.log
+.claude/goals/logs/
+.claude/goals/worktree-*/
+.claude/goals/PAUSE
+.claude/goals/active.json*

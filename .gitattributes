@@ -1,0 +1,7 @@
+# Shell scripts and JS MUST be LF — bash/node choke on CRLF (\r) on Linux/macOS.
+*.sh   text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+# Treat everything else as text with normalized LF in the repo.
+*      text=auto eol=lf
