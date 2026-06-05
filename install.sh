@@ -40,10 +40,18 @@ if ! git -C "$TARGET" rev-parse --show-toplevel >/dev/null 2>&1; then
   echo "            isolation and repo-root detection; some features will degrade. (git init recommended.)" >&2
 fi
 
-# Sanity: make sure we actually have scripts to copy.
+# Source-integrity preflight — fail with a CLEAR, specific message if anything the
+# installer needs is missing (e.g. a partial/corrupted clone). No silent half-installs.
 SCRIPTS=("$SRC/scripts/"goal-*.sh)
-if [[ ${#SCRIPTS[@]} -eq 0 || ! -f "${SCRIPTS[0]}" ]]; then
-  echo "No goal-*.sh scripts found in $SRC/scripts/ — is this the claude-goal repo?" >&2
+_missing=()
+[[ ${#SCRIPTS[@]} -gt 0 && -f "${SCRIPTS[0]}" ]] || _missing+=("scripts/goal-*.sh")
+[[ -f "$SRC/scripts/goal-statusline.js" ]]        || _missing+=("scripts/goal-statusline.js")
+[[ -f "$SRC/skill/SKILL.md" ]]                    || _missing+=("skill/SKILL.md")
+[[ -f "$SRC/settings.example.json" ]]             || _missing+=("settings.example.json")
+if [[ ${#_missing[@]} -gt 0 ]]; then
+  echo "ABORT: the claude-goal source is incomplete — these required files are missing from $SRC:" >&2
+  for m in "${_missing[@]}"; do echo "    - $m" >&2; done
+  echo "  Re-clone the repo: git clone https://github.com/tungdd2710/claude-goal.git" >&2
   exit 1
 fi
 
