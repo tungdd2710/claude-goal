@@ -172,6 +172,11 @@ while i < len(args):
             g['paused_at'] = datetime.now(timezone.utc).isoformat()
         elif new_status == 'active':
             g['paused_at'] = None
+            # Re-activation clears the terminal stamp. A paused/blocked goal carries a
+            # completed_at (blocked stamps it below); without clearing it on the way back
+            # to active, goal-cron-guard would see status=active + completed_at and re-heal
+            # the goal straight to 'complete', silently undoing the reactivation.
+            g['completed_at'] = None
         elif new_status in ('complete', 'impossible', 'blocked'):
             # terminal states stamp completed_at (SKILL.md Completion Report needs it)
             g['completed_at'] = datetime.now(timezone.utc).isoformat()

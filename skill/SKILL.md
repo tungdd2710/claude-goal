@@ -1,6 +1,6 @@
 ---
 name: goal
-version: 0.11.0
+version: 0.12.0
 description: |
   Set a goal, walk away. Supports MULTIPLE concurrent goals with worktree
   isolation. Agent derives criteria, scope, and plan from the goal string alone.
