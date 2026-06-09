@@ -16,6 +16,12 @@ VALIDATE="$REPO_ROOT/.claude/scripts/goal-validate.sh"
 # PAUSE sentinel — user kill-switch. Never resume while it exists.
 [[ -f "$REPO_ROOT/.claude/goals/PAUSE" ]] && { echo "[goal] PAUSE sentinel present — not resuming."; exit 0; }
 
+# Crash/completion safety: self-heal re-activated goals + prune stale /goal-resume
+# crons when nothing is genuinely active. If this resume run has no active goal, the
+# guard deletes THIS cron so it stops firing forever after a crash or once every
+# goal is finished. See goal-cron-guard.sh.
+bash "$REPO_ROOT/.claude/scripts/goal-cron-guard.sh" 2>/dev/null || true
+
 # Try to resolve a single goal. If multiple or none, exit silently.
 GOAL_FILE=$(bash "$RESOLVE" 2>/dev/null) || {
   # Multiple active goals or none — cron handles multi-goal resume

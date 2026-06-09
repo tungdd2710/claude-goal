@@ -26,6 +26,7 @@ Then **restart Claude Code** so it reloads the hooks. Verify with `/goal list` (
 | Event | Script | Role |
 |---|---|---|
 | `Stop` | `goal-stop-hook.sh` | The autonomy engine — blocks the turn-end and feeds the next iteration back in-session. Claim-scoped, fail-open. |
+| `SessionStart` | `goal-cron-guard.sh` | Crash/completion safety — on every startup, prunes the durable resume cron + stale claims and self-heals re-activated goals once no goal is active. Fail-open. |
 | `PreToolUse` (matcher `AskUserQuestion`) | `goal-no-ask.sh` | Blocks the agent from asking you questions mid-goal. |
 | `PostToolUse` (matcher `*`) | `goal-no-text-reminder.sh` | Nudges the agent to keep calling tools instead of writing prose. |
 | `statusLine` | `goal-statusline.js` | Shows the goal this session owns + iteration count. |
@@ -84,8 +85,20 @@ CronCreate(cron: "17 */2 * * *", durable: true, recurring: true,
   prompt: "/goal resume -- check .claude/goals/index.json for all active goals, resume each")
 ```
 
-It only acts if a goal is unclaimed/unfinished. Delete it when the goal completes. Within a running
-session you don't need it — the Stop hook drives the loop.
+It only acts if a goal is unclaimed/unfinished. Within a running session you don't need it — the Stop
+hook drives the loop.
+
+**You no longer delete the cron by hand.** `goal-cron-guard.sh` removes it automatically once no goal
+is genuinely active — wired at three points so a finished goal or a laptop crash never leaves it firing:
+
+- **SessionStart hook** — runs on every startup (incl. after a crash). If nothing is active it prunes
+  the `/goal` cron from `.claude/scheduled_tasks.json` and clears stale `session-*.goal` claims.
+- **`goal-continue.sh`** — the cron's own entry; deletes the cron the first time it fires with no
+  active goal (so a stale durable cron self-terminates).
+- **`goal-update-state.sh`** — marking a goal `complete`/`blocked`/`impossible` removes its cron then.
+
+It also **self-heals** a goal left `status:active` with `completed_at` set (a finished goal that got
+re-opened) back to `complete`, which is what otherwise made the cron + Stop hook perpetuate forever.
 
 ## Usage
 

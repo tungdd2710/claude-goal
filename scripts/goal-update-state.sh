@@ -433,3 +433,9 @@ with open(tmp, 'w') as f:
     json.dump(idx, f, indent=2, ensure_ascii=False)
 os.replace(tmp, idx_file)
 " "$GOAL_FILE"
+
+# Crash/completion safety: after any state change, prune stale /goal-resume crons +
+# self-heal re-activated goals when nothing is genuinely active. So marking a goal
+# complete here ALSO removes its durable cron. See goal-cron-guard.sh.
+_GUARD_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+bash "$_GUARD_ROOT/.claude/scripts/goal-cron-guard.sh" 2>/dev/null || true

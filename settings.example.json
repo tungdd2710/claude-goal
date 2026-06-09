@@ -1,7 +1,17 @@
 {
-  "_comment": "claude-goal hook wiring. install.sh merges these into your project's .claude/settings.json (with backup + dedupe). These THREE core hooks + the statusline are what make /goal autonomous; see docs/ARCHITECTURE.md for what each does. The scope-lock hook (goal-scope-check.sh) is intentionally NOT here — it is OPT-IN, because it auto-reverts out-of-scope edits and a too-narrow scope can discard real work; enable it deliberately per docs/SETUP.md. ${CLAUDE_PROJECT_DIR:-.} resolves to your project root with a safe fallback.",
+  "_comment": "claude-goal hook wiring. install.sh merges these into your project's .claude/settings.json (with backup + dedupe). These FOUR core hooks + the statusline are what make /goal autonomous; see docs/ARCHITECTURE.md for what each does. SessionStart runs goal-cron-guard.sh: on every startup (incl. after a laptop crash) it prunes the durable resume cron + stale session claims and self-heals re-activated goals once no goal is genuinely active — so a finished goal or a crash never leaves the cron firing forever. The scope-lock hook (goal-scope-check.sh) is intentionally NOT here — it is OPT-IN, because it auto-reverts out-of-scope edits and a too-narrow scope can discard real work; enable it deliberately per docs/SETUP.md. ${CLAUDE_PROJECT_DIR:-.} resolves to your project root with a safe fallback.",
 
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" 2>/dev/null; bash .claude/scripts/goal-cron-guard.sh 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

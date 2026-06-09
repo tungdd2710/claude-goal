@@ -222,6 +222,7 @@ current worktree).
 | `goal-list.sh` | Tabular list of all goals. |
 | `goal-validate.sh` | Validate state JSON + schema (exit codes 0/1/2/3). |
 | `goal-stop-hook.sh` | **Stop hook** — the autonomy engine (§3). |
+| `goal-cron-guard.sh` | **SessionStart** — prune the durable `/goal` resume cron + stale claims and self-heal re-activated goals once none are active (crash/completion safety). |
 | `goal-no-ask.sh` | **PreToolUse** — block `AskUserQuestion` (§4). |
 | `goal-no-text-reminder.sh` | **PostToolUse** — anti-narration nudge (§4). |
 | `goal-scope-check.sh` | **PostToolUse** — scope-lock revert (§4). |

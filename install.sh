@@ -127,7 +127,7 @@ for event, entries in ex_hooks.items():
         needle = ""
         for h in entry.get("hooks", []):
             cmd = h.get("command", "") or ""
-            for s in ("goal-stop-hook", "goal-scope-check", "goal-no-text-reminder", "goal-no-ask"):
+            for s in ("goal-cron-guard", "goal-stop-hook", "goal-scope-check", "goal-no-text-reminder", "goal-no-ask"):
                 if s in cmd:
                     needle = s
         if already_wired(cur["hooks"][event], needle):

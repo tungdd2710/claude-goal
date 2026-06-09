@@ -1,6 +1,6 @@
 ---
 name: goal
-version: 0.10.0
+version: 0.11.0
 description: |
   Set a goal, walk away. Supports MULTIPLE concurrent goals with worktree
   isolation. Agent derives criteria, scope, and plan from the goal string alone.
@@ -692,6 +692,7 @@ Multiple goals can run concurrently. Each goal:
 - `goal-validate.sh [path]` — validate goal JSON schema
 - `goal-loop.sh [--goal-id ID]` — standalone headless iteration runner (budget auto-extends; sets GOAL_DRIVER_ACTIVE)
 - `goal-continue.sh` — cron / manual cross-session resume (NOT a Stop hook — wiring it as one recurses)
+- `goal-cron-guard.sh` (in `.claude/scripts/`) — SessionStart guard: prunes the `/goal` resume cron + stale claims + self-heals re-activated goals (completed_at set but status active) when no goal is genuinely active; also called by goal-continue.sh + goal-update-state.sh so a finished goal or a crash never leaves the cron firing [WIRED in `.claude/settings.json`]
 - `goal-stop-hook.sh` (in `.claude/scripts/`) — Stop-hook autonomy engine: pure-block, claim-scoped, fail-open [WIRED in `.claude/settings.json`]
 - `goal-no-text-reminder.sh` (in `.claude/scripts/`) — PostToolUse `*` soft nudge: "next action must be a tool call" while THIS session's claimed goal is active [WIRED in `.claude/settings.json`]
 - `goal-no-ask.sh` (in `.claude/scripts/`) — PreToolUse `AskUserQuestion` blocker: enforces never-ask while THIS session's claimed goal is active [WIRED in `.claude/settings.json`]

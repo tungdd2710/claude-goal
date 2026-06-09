@@ -304,6 +304,7 @@ claude-goal/
 │   ├── goal-list.sh            # list goals
 │   ├── goal-validate.sh        # validate state JSON
 │   ├── goal-stop-hook.sh       # ★ Stop hook — the autonomy engine
+│   ├── goal-cron-guard.sh      # ★ SessionStart — prune stale resume cron
 │   ├── goal-no-ask.sh          # PreToolUse — blocks AskUserQuestion
 │   ├── goal-no-text-reminder.sh# PostToolUse — anti-narration nudge
 │   ├── goal-scope-check.sh     # PostToolUse — scope-lock revert
